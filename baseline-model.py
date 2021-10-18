@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 
 # extract properties of columns from .csv
 
-df = pd.read_csv("../Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", skiprows = [i for i in range(1,24)], usecols=[i for i in range(2,26)])
+df = pd.read_csv("Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", skiprows = [i for i in range(1,24)], usecols=[i for i in range(2,26)])
 
 for col in df:
     mean_score = df[col].mean()
