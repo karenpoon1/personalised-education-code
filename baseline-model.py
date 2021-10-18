@@ -11,8 +11,8 @@ for col in df:
     df[col] = (df[col] >= mean_score).astype(float) # binarise data
 
 # train, test = train_test_split(df, test_size=0.9, random_state=42, shuffle=True)
-
 # shuffled_df = df.reindex(np.random.permutation(df.index))
+
 student_baseline_df = df.head(5000)
 
 # shuffle rows and columns
@@ -28,12 +28,14 @@ test_df = student_baseline_df.iloc[:, no_train_cols:]
 
 # compute probit of a student answering a question correctly, for each student
 student_probit = train_df.sum(axis=1)/no_train_cols
-print(student_probit)
 
 predictions_df = pd.DataFrame().reindex_like(test_df)
 
 for i in range(len(student_probit)):
     predictions_df.loc[i] = np.random.binomial(size=no_test_cols, n=1, p=student_probit[i])
 
-print(predictions_df)
-print(test_df)
+no_correct_predictions = np.count_nonzero(predictions_df == test_df)
+total_entries = test_df.shape[0]*test_df.shape[1]
+performance = no_correct_predictions/total_entries
+
+print(performance)
