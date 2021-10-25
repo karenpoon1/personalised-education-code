@@ -34,6 +34,10 @@ def display_parameter_histogram(student_split, question_split, df, shuffle_rows,
     plt.title('Bar plot of question parameter')
     plt.show()
 
+    question_probit.plot.hist()
+    plt.title('Hist plot of question parameter')
+    plt.show()
+
     # compute probit of a student answering a question correctly, for each student
     student_probit = train_student_df.sum(axis=1)/no_train_cols
     student_probit.plot.hist(bins=no_train_cols+1)

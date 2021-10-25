@@ -16,6 +16,12 @@ question_split = 0.5
 no_train_rows = int(len(df) * student_split)
 no_train_cols = int(len(df.columns) * question_split)
 
+# shuffle data
+# shuffle_seed = 0
+# df = df.sample(frac=1, axis=0, random_state=np.random.RandomState(shuffle_seed)) # shuffle rows
+# df = df.sample(frac=1, axis=1, random_state=np.random.RandomState(shuffle_seed)) # shuffle cols
+# df = df.reset_index(drop=True)
+
 train_question_df = df.iloc[:no_train_rows, no_train_cols:]
 train_question_df = train_question_df.reset_index(drop=True)
 train_student_df = df.iloc[no_train_rows:, :no_train_cols]
@@ -25,41 +31,32 @@ def train_student_baseline(train_df, test_df, seed_number):
     
     rng = default_rng(seed=seed_number)
 
-    # cols_shuffled_df = df.sample(frac=1, axis=1, random_state=np.random.RandomState(shuffle_cols))
-
-    # compute probit (param) of a student answering a question correctly, for each student
     student_param_arr = train_df.sum(axis=1)/no_train_cols
 
     predictions_df = pd.DataFrame().reindex_like(test_df)
-
     for i, probability in enumerate(student_param_arr):
         predictions_df.iloc[i] = rng.binomial(size=len(test_df.columns), n=1, p=probability)
 
-    total_entries = test_df.size
-
     no_correct_predictions = np.count_nonzero(predictions_df == test_df)
-    performance = no_correct_predictions/total_entries
-
+    performance = no_correct_predictions/test_df.size
     print(performance*100)
+
     return performance
 
 def train_question_baseline(train_df, test_df, seed_number):
     
     rng = default_rng(seed=seed_number)
 
-    # compute probit of a question being answered correctly, for each question
     question_param_arr = train_df.sum(axis=0)/no_train_rows
 
     predictions_df = pd.DataFrame().reindex_like(test_df)
     for i, probability in enumerate(question_param_arr):
         predictions_df.iloc[:, i] = rng.binomial(size=len(test_df), n=1, p=probability)
 
-    total_entries = test_df.size
-
     no_correct_predictions = np.count_nonzero(predictions_df == test_df)
-    performance = no_correct_predictions/total_entries
-
+    performance = no_correct_predictions/test_df.size
     print(performance*100)
+
     return performance
 
 def train_student_shuffle_each_row(validation_split, df, no_samples):
@@ -88,7 +85,10 @@ def train_student_shuffle_each_row(validation_split, df, no_samples):
     
     return performance
 
-# performance_arr = [train_student_baseline(train_student_df, test_df, i)*100 for i in range(100)]
+performance_arr = [train_student_baseline(train_student_df, test_df, i)*100 for i in range(100)]
+print(performance_arr)
+print(np.mean(performance_arr), np.std(performance_arr))
+
 performance_arr = [train_question_baseline(train_question_df, test_df, i)*100 for i in range(100)]
 print(performance_arr)
 print(np.mean(performance_arr), np.std(performance_arr))
