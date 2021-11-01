@@ -4,7 +4,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 df = pd.read_csv("personalised-education/Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", skiprows = [i for i in range(1,24)], usecols=[i for i in range(2,26)])
+max_scores = pd.read_csv("personalised-education/Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", nrows = 1, skiprows=[1], usecols=list(range(2,26)))
 
+# clean data (scores above max go to max)
+for col in df:
+    max_score = max_scores[col].iloc[0]
+    df.loc[df[col] > max_score, col] = max_score
+    df.loc[df[col] < 0, col] = 0
+    
 # binarise data by thresholding at average
 for col in df:
     mean_score = df[col].mean()
