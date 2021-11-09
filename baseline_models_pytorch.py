@@ -3,8 +3,6 @@ import numpy as np
 from numpy.random import default_rng
 import pandas as pd
 
-
-
 df = pd.read_csv("personalised-education/Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", skiprows=list(range(1,24)), usecols=list(range(2,26)))
 max_scores = pd.read_csv("personalised-education/Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", nrows = 1, skiprows=[1], usecols=list(range(2,26)))
 
@@ -13,11 +11,18 @@ for col in df:
     max_score = max_scores[col].iloc[0]
     df.loc[df[col] > max_score, col] = max_score
     df.loc[df[col] < 0, col] = 0
+    # binarise data by thresholding at mid score
+    # df[col] = (df[col] >= max_score/2).astype(float)
 
-# binarise data using average
-for col in df:
+    # binarise data by thresholding at average
     mean_score = df[col].mean()
     df[col] = (df[col] >= mean_score).astype(float)
+
+# shuffle data
+shuffle_seed = 0
+# df = df.sample(frac=1, axis=0, random_state=np.random.RandomState(shuffle_seed)) # shuffle rows
+# df = df.sample(frac=1, axis=1, random_state=np.random.RandomState(shuffle_seed)) # shuffle cols
+# df = df.reset_index(drop=True)
 
 # split to train and test set
 student_split = 0.5
@@ -25,17 +30,10 @@ question_split = 0.5
 no_train_rows = int(len(df) * student_split)
 no_train_cols = int(len(df.columns) * question_split)
 
-# shuffle data
-# shuffle_seed = 0
-# df = df.sample(frac=1, axis=0, random_state=np.random.RandomState(shuffle_seed)) # shuffle rows
-# df = df.sample(frac=1, axis=1, random_state=np.random.RandomState(shuffle_seed)) # shuffle cols
-# df = df.reset_index(drop=True)
-
 train_question_df = df.iloc[:no_train_rows, no_train_cols:]
 train_question_df = train_question_df.reset_index(drop=True)
 train_student_df = df.iloc[no_train_rows:, :no_train_cols]
 test_df = df.iloc[no_train_rows:, no_train_cols:]
-
 
 def train_student_baseline(train_student_df, test_df, seed_number):
 
@@ -72,10 +70,10 @@ def train_question_baseline(train_df, test_df, seed_number):
 
     return performance
 
-performance_arr = [train_student_baseline(train_student_df, test_df, i) for i in range(100)]
-print(performance_arr)
-print(np.mean(performance_arr), np.std(performance_arr))
-
-# performance_arr = [train_question_baseline(train_question_df, test_df, i)*100 for i in range(100)]
+# performance_arr = [train_student_baseline(train_student_df, test_df, i) for i in range(100)]
 # print(performance_arr)
 # print(np.mean(performance_arr), np.std(performance_arr))
+
+performance_arr = [train_question_baseline(train_question_df, test_df, i)*100 for i in range(100)]
+print(performance_arr)
+print(np.mean(performance_arr), np.std(performance_arr))
