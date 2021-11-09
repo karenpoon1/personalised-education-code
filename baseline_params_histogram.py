@@ -11,9 +11,10 @@ for col in df:
     max_score = max_scores[col].iloc[0]
     df.loc[df[col] > max_score, col] = max_score
     df.loc[df[col] < 0, col] = 0
-    
-# binarise data by thresholding at average
-for col in df:
+    # binarise data by thresholding at mid score
+    # df[col] = (df[col] >= max_score/2).astype(float)
+
+    # binarise data by thresholding at average
     mean_score = df[col].mean()
     df[col] = (df[col] >= mean_score).astype(float)
 
@@ -34,15 +35,25 @@ def display_parameter_histogram(student_split, question_split, df, shuffle_rows,
     train_question_df = train_question_df.reset_index(drop=True)
     train_student_df = df.iloc[no_train_rows:, :no_train_cols]
     test_df = df.iloc[no_train_rows:, no_train_cols:]
+    redundant_df = df.iloc[:no_train_rows, :no_train_cols]
 
     # compute probit of a question being answered correctly, for each question
     question_probit = train_question_df.sum(axis=0)/no_train_rows
     question_probit.plot.bar()
-    plt.title('Bar plot of question parameter')
+    plt.title('Bar plot of question parameter (last 12q)')
     plt.show()
 
     question_probit.plot.hist()
-    plt.title('Hist plot of question parameter')
+    plt.title('Hist plot of question parameter (last 12q)')
+    plt.show()
+
+    redundant_question_probit = redundant_df.sum(axis=0)/no_train_rows
+    redundant_question_probit.plot.hist()
+    plt.title('Hist plot of question parameter (first 12q)')
+    plt.show()
+
+    redundant_question_probit.plot.bar()
+    plt.title('Bar plot of question parameter (first 12q)')
     plt.show()
 
     # compute probit of a student answering a question correctly, for each student
