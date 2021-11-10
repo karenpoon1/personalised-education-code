@@ -3,22 +3,23 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from utils.clean_data import thres_score_range
-from utils.binarise_data import binarise_by_mid
+from utils.binarise_data import binarise_by_mid, binarise_by_avg
 from utils.shuffle_data import shuffle_cols
-from utils.split_data import split_dataset
+from utils.split_data import split_to_4quadrants
 
 df = pd.read_csv("personalised-education/Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", skiprows=list(range(1,24)), usecols=list(range(2,26)))
 max_scores = pd.read_csv("personalised-education/Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", nrows = 1, skiprows=[1], usecols=list(range(2,26)))
 
 cleaned_df = thres_score_range(df, max_scores)
-binarised_df = binarise_by_mid(cleaned_df, max_scores)
+# binarised_df = binarise_by_mid(cleaned_df, max_scores)
+binarised_df = binarise_by_avg(cleaned_df)
 # binarised_df = shuffle_cols(binarised_df, shuffle_seed=0)
 
 dataset_ts = torch.tensor(binarised_df.values)
-first_quadrant, train_question_output_ts, train_student_output_ts, test_output_ts = split_dataset(dataset_ts, student_split=0.5, question_split=0.5)
+_, train_question_output_ts, train_student_output_ts, test_output_ts = split_to_4quadrants(dataset_ts, student_split=0.5, question_split=0.5)
 
 learning_rate = 0.0003
-n_iters = 60
+n_iters = 6000
 seed_number = 1000
 
 rng = torch.Generator()
@@ -85,14 +86,14 @@ plt.plot(t_arr, nll_arr)
 plt.title('Training student params')
 plt.ylabel('Negative log likelihood')
 plt.xlabel('epoch')
-# plt.show()
+plt.show()
 
 _, bq_tensor, t_arr, nll_arr = train(learning_rate, n_iters, train_question_output_ts)
 plt.plot(t_arr, nll_arr)
 plt.title('Training question params')
 plt.ylabel('Negative log likelihood')
 plt.xlabel('epoch')
-# plt.show()
+plt.show()
 
 performance = predict(bs_tensor, bq_tensor, test_output_ts, rng)
 

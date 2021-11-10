@@ -1,6 +1,6 @@
 import torch
 
-def split_dataset(dataset_ts, student_split=0.5, question_split=0.5):
+def split_to_4quadrants(dataset_ts, student_split=0.5, question_split=0.5):
 
     # split to train and test set
     no_train_rows = int(dataset_ts.shape[0] * student_split)
