@@ -4,6 +4,7 @@ import numpy as np
 import seaborn as sns
 
 # from torch.autograd import Variable
+from utils.split_data import split_dataset
 
 seed_number = 1000
 rng = torch.Generator()
@@ -11,33 +12,24 @@ rng.manual_seed(seed_number)
 
 S = 45022
 Q = 24
-bs_tensor_fake = torch.normal(mean=0, std=np.sqrt(10), size=(S,), generator=rng)
-bq_tensor_fake = torch.normal(mean=0, std=np.sqrt(10), size=(Q,), generator=rng)
+
+learning_rate = 0.0003
+n_iters = 80
 
 def probit_correct(bs, bq):
     return 1/(1+torch.exp(-bs-bq))
 
-# Generate fake data
-bs_matrix = bs_tensor_fake.repeat(len(bq_tensor_fake), 1)
-bs_matrix = torch.transpose(bs_matrix, 0, 1)
-bq_matrix = bq_tensor_fake.repeat(len(bs_tensor_fake), 1)
+def synthesise_data_from_normal(S, Q, rng):
+    bs_tensor_fake = torch.normal(mean=0, std=np.sqrt(10), size=(S,), generator=rng)
+    bq_tensor_fake = torch.normal(mean=0, std=np.sqrt(10), size=(Q,), generator=rng)
 
-product_params_matrix = probit_correct(bs_matrix, bq_matrix) # probit of correct answer
+    bs_matrix = bs_tensor_fake.repeat(len(bq_tensor_fake), 1)
+    bs_matrix = torch.transpose(bs_matrix, 0, 1)
+    bq_matrix = bq_tensor_fake.repeat(len(bs_tensor_fake), 1)
+    product_params_matrix = probit_correct(bs_matrix, bq_matrix) # probit of correct answer
 
-fake_data = torch.bernoulli(product_params_matrix, generator=rng)
-
-# Split data
-student_split = 0.5
-question_split = 0.5
-no_train_rows = int(S * student_split)
-no_train_cols = int(Q * question_split)
-
-upper_half, lower_half = torch.split(fake_data, no_train_rows, dim=0)
-_, output_question_train = torch.split(upper_half, no_train_cols, dim=1)
-output_student_train, output_test = torch.split(lower_half, no_train_cols, dim=1)
-
-learning_rate = 0.0003
-n_iters = 8000
+    fake_data = torch.bernoulli(product_params_matrix, generator=rng)
+    return fake_data
 
 # Fit model
 def train(learning_rate, n_iters, output_tensor):
@@ -76,42 +68,52 @@ def train(learning_rate, n_iters, output_tensor):
         t_arr.append(epoch)
         nll_arr.append(nll)
     
-    plt.plot(t_arr, nll_arr)
-    plt.ylabel('Negative log likelihood')
-    plt.xlabel('epoch')
-    plt.show()
+    return bs_tensor, bq_tensor, t_arr, nll_arr
 
-    return bs_tensor, bq_tensor
+def predict(bs_tensor, bq_tensor, test_output_ts, rng):
+    bs_matrix = bs_tensor.repeat(len(bq_tensor), 1)
+    bs_matrix = torch.transpose(bs_matrix, 0, 1)
+    bq_matrix = bq_tensor.repeat(len(bs_tensor), 1)
 
-bs_tensor, _ = train(learning_rate, n_iters, output_student_train)
-_, bq_tensor = train(learning_rate, n_iters, output_question_train)
+    product_params_matrix = probit_correct(bs_matrix, bq_matrix)
+
+    predictions = torch.bernoulli(product_params_matrix, generator=rng)
+
+    performance = torch.sum(torch.eq(test_output_ts, predictions)) / torch.numel(test_output_ts)
+    performance = float(performance)*100
+
+    portion = product_params_matrix.detach()
+    portion = portion[:100, :]
+    sns.heatmap(portion, linewidth=0.5)
+    # plt.show()
+
+    return performance
+
+fake_data = synthesise_data_from_normal(S, Q, rng)
+first_quadrant, train_question_output_ts, train_student_output_ts, test_output_ts = split_dataset(fake_data, student_split=0.5, question_split=0.5)
+
+bs_tensor, _, t_arr, nll_arr = train(learning_rate, n_iters, train_student_output_ts)
+plt.plot(t_arr, nll_arr)
+plt.title('Training student params')
+plt.ylabel('Negative log likelihood')
+plt.xlabel('epoch')
+# plt.show()
+
+_, bq_tensor, t_arr, nll_arr = train(learning_rate, n_iters, train_question_output_ts)
+plt.plot(t_arr, nll_arr)
+plt.title('Training question params')
+plt.ylabel('Negative log likelihood')
+plt.xlabel('epoch')
+# plt.show()
+
+performance = predict(bs_tensor, bq_tensor, test_output_ts, rng)
+
+print(f"bs (student params): {bs_tensor}")
+print(f"bq (question params): {bq_tensor}")
+print(f"Percentage accuracy for product baseline: {performance}")
 
 # mse between params
 # bs_mse = torch.sum((bs_tensor - bs_tensor_fake)**2)
-# print(bs_mse)
 # bq_mse =  torch.sum((bq_tensor - bq_tensor_fake)**2)
-# print(bq_mse)
-
-print('bs_tensor: ', bs_tensor)
-print('bq_tensor: ', bq_tensor)
-
-bs_matrix = bs_tensor.repeat(len(bq_tensor), 1)
-bs_matrix = torch.transpose(bs_matrix, 0, 1)
-bq_matrix = bq_tensor.repeat(len(bs_tensor), 1)
-
-product_params_matrix = probit_correct(bs_matrix, bq_matrix)
-
-
-predictions = torch.bernoulli(product_params_matrix, generator=rng)
-
-performance = torch.sum(torch.eq(output_test, predictions)) / torch.numel(output_test)
-performance = float(performance)*100
-
-print(performance)
-portion = product_params_matrix.detach()
-portion = portion[:100, :]
-ax = sns.heatmap(portion, linewidth=0.5)
-plt.show()
 
 # try optimise each dimension one by one, compute loss going along
-
