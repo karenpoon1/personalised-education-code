@@ -15,6 +15,6 @@ def binarise_by_mid(df, max_scores):
         - max_scores: pd.DataFrame() containing max score for each question
     """
     for col in df:
-        max_score = max_scores[col].iloc[0]
+        max_score = max_scores[col]
         df[col] = (df[col] >= max_score/2).astype(float)
     return df
