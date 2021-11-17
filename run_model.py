@@ -6,10 +6,10 @@ from utils.binarise_data import binarise_by_mid, binarise_by_avg
 from utils.shuffle_data import shuffle_cols
 from utils.split_data import split_to_4quadrants
 
-from single_param_baseline import train_single_param
-from student_ability_baseline import train_student_ability
-from question_difficulty_baseline import train_question_difficulty
-from ability_difficulty_product import train_product_alternate_quadrants 
+from models.single_param_baseline import train_single_param
+from models.student_ability_baseline import train_student_ability
+from models.question_difficulty_baseline import train_question_difficulty
+from models.ability_difficulty_product import train_product_alternate_quadrants 
 # from product_baseline_all_quadrants import train_product_all_quadrants
 # from product_baseline_all_quadrants_draft import train_product_entire
 # from product_diff_meta import train_meta
