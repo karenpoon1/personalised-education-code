@@ -25,9 +25,13 @@ def train(learning_rate, n_iters, output_tensor, rng):
         bs_matrix = torch.transpose(bs_matrix, 0, 1)
         bq_matrix = bq_tensor.repeat(S, 1)
 
-        probit_1 = torch.log(1/(1+torch.exp(-bs_matrix-bq_matrix)))
-        probit_0 = torch.log(1/(1+torch.exp(+bs_matrix+bq_matrix)))
-        nll = -torch.sum(output_tensor*probit_1 + (1-output_tensor)*probit_0)
+        # probit_1 = torch.log(1/(1+torch.exp(-bs_matrix-bq_matrix)))
+        # probit_0 = torch.log(1/(1+torch.exp(+bs_matrix+bq_matrix)))
+        # nll = -torch.sum(output_tensor*probit_1 + (1-output_tensor)*probit_0)
+
+        probit_1 = 1/(1+torch.exp(-bs_matrix-bq_matrix))
+        probit_0 = 1 - probit_1
+        nll = -torch.sum(output_tensor*torch.log(probit_1) + (1-output_tensor)*torch.log(probit_0))
 
         nll.backward()
 
@@ -76,21 +80,26 @@ def predict(bs_tensor, bq_tensor, test_output_ts, rng):
     return product_params_matrix, performance
 
 
-def train_product_alternate_quadrants(train_question_output_ts, train_student_output_ts, test_output_ts, learning_rate, n_iters, rng):
+def train_product_alternate_quadrants(first_train_quadrant_ts, second_train_quadrant_ts, test_output_ts, learning_rate, n_iters, rng):
 
-    bs_tensor, _, t_arr, nll_arr = train(learning_rate, n_iters, train_student_output_ts, rng)
+    bs_tensor, _, t_arr, nll_arr = train(learning_rate, n_iters, second_train_quadrant_ts, rng)
     plt.plot(t_arr, nll_arr)
     plt.title('Training student params')
     plt.ylabel('Negative log likelihood')
     plt.xlabel('epoch')
     plt.show()
 
-    _, bq_tensor, t_arr, nll_arr = train(learning_rate, n_iters, train_question_output_ts, rng)
+    _, bq_tensor, t_arr, nll_arr = train(learning_rate, n_iters, first_train_quadrant_ts, rng)
     plt.plot(t_arr, nll_arr)
     plt.title('Training question params')
     plt.ylabel('Negative log likelihood')
     plt.xlabel('epoch')
     plt.show()
+
+    if len(bs_tensor) != test_output_ts.shape[0]:
+        bs_tensor = bs_tensor[-test_output_ts.shape[0]:]
+    if len(bq_tensor) != test_output_ts.shape[1]:
+        bq_tensor = bq_tensor[-test_output_ts.shape[1]:]
 
     product_params_matrix, performance = predict(bs_tensor, bq_tensor, test_output_ts, rng)
 
@@ -100,3 +109,13 @@ def train_product_alternate_quadrants(train_question_output_ts, train_student_ou
     print(f"Percentage accuracy for product baseline: {performance}")
 
     return bs_tensor, bq_tensor, product_params_matrix, performance
+
+
+def train_product_upper_left(first_quadrant_ts, train_question_output_ts, train_student_output_ts, test_output_ts, learning_rate, n_iters, rng):
+    upper_half_ts = torch.cat([first_quadrant_ts, train_question_output_ts], dim=1)
+    left_half_ts = torch.cat([first_quadrant_ts, train_student_output_ts], dim=0)
+    train_product_alternate_quadrants(upper_half_ts, left_half_ts, test_output_ts, learning_rate, n_iters, rng)
+    # bs_tensor, _, t_arr, nll_arr = train(learning_rate, 90, left_half_ts, rng)
+    # _, bq_tensor, t_arr, nll_arr = train(learning_rate, 80, upper_half_ts, rng)
+    # product_params_matrix, performance = predict(bs_tensor[-test_output_ts.shape[0]:], bq_tensor[-test_output_ts.shape[1]:], test_output_ts, rng)
+    return
