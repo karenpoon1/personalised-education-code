@@ -1,6 +1,6 @@
 import pandas as pd
 
-from parse_data import parse_paper_data
+from utils.parse_data import parse_paper_data
 from run_model import run_model
 
 paper1_columns = ['Name', 'q1', 'q2', 'q3',
@@ -16,15 +16,15 @@ paper3_columns = ['Name.2', 'q1.2', 'q2.2', 'q3.2', 'q4.2', 'q5.2', 'q6.2',
                     'q23.2']
 
 # old paper
-csv_path = "personalised-education/Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv"
+csv_path = "Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv"
 data_start_row = 23
 
 # new paper
-# csv_path = "personalised-education-public\Fwd__Pinpoint_ML_Dataset\9to1_2017_GCSE_1H_and_2H_and_3H Linked Pinpoint Data_Cleaned.csv"
+# csv_path = "Fwd__Pinpoint_ML_Dataset\9to1_2017_GCSE_1H_and_2H_and_3H Linked Pinpoint Data_Cleaned.csv"
 # data_start_row = 6
 
-model = ['single_param', 'student_ability', 'question_difficulty', 'product']
+model = ['single_param', 'student_ability', 'question_difficulty', 'ability_difficulty_product']
 
 raw_data = pd.read_csv(csv_path, low_memory=False)
 exam_data_df, meta_data_df = parse_paper_data(raw_data[paper1_columns], data_start_row)
-run_model(exam_data_df, meta_data_df, model[1], binarise_method='mid', shuffle=True)
+run_model(exam_data_df, meta_data_df, model[3], binarise_method='mid', shuffle=True)
