@@ -4,14 +4,13 @@ import numpy as np
 from utils.clean_data import thres_score_range
 from utils.binarise_data import binarise_by_mid, binarise_by_avg
 from utils.shuffle_data import shuffle_cols
-from utils.split_data import split_to_4quadrants
+from utils.split_data import split_to_4quadrants, split_to_4quadrants_df
 
 from models.single_param_baseline import train_single_param
 from models.student_ability_baseline import train_student_ability
 from models.question_difficulty_baseline import train_question_difficulty
 from models.ability_difficulty_product import train_product_alternate_quadrants, train_product_upper_left
-# from product_baseline_all_quadrants import train_product_all_quadrants
-# from product_baseline_all_quadrants_draft import train_product_entire
+from models.ADP_vectorised import train_product_vectorised
 # from product_diff_meta import train_meta
 
 def run_model(exam_data_df, meta_data_df, model, binarise_method='mid', shuffle=False):
@@ -47,7 +46,29 @@ def run_model(exam_data_df, meta_data_df, model, binarise_method='mid', shuffle=
         rng = torch.Generator()
         rng.manual_seed(seed_number)
         # train_product_alternate_quadrants(train_question_ts, train_student_ts, test_ts, 0.0003, 600, rng)
-        train_product_upper_left(first_quadrant_ts, train_question_ts, train_student_ts, test_ts, 0.0002, 600, rng)
+        train_product_upper_left(first_quadrant_ts, train_question_ts, train_student_ts, test_ts, 0.0002, 1, rng)
 
-    
+    elif model == 'ADP_all_at_once':
+        seed_number = 1000
+        rng = torch.Generator()
+        rng.manual_seed(seed_number)
+        learning_rate = 0.00025
+        n_iters = 4500
+        S, Q = dataset_ts.shape[0], dataset_ts.shape[1]
+        train_product_vectorised(dataset_ts, binarised_df, S, Q, learning_rate, n_iters, rng)
+
+    elif model == 'ADP_meta':
+        seed_number = 1000
+        rng = torch.Generator()
+        rng.manual_seed(seed_number)
+        learning_rate = 0.00022
+        n_iters = 3500
+        S, Q = dataset_ts.shape[0], dataset_ts.shape[1]
+        
+        meta_data = torch.tensor([max_scores.values])
+        question_id = torch.tensor([int(entry[1:])-1 for entry in max_scores.columns.tolist()])
+        meta_data_ts = torch.stack((question_id, meta_data), dim=0)
+        print(meta_data_ts)
+
+        train_product_vectorised(dataset_ts, binarised_df, S, Q, learning_rate, n_iters, rng)
     return

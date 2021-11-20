@@ -23,8 +23,8 @@ data_start_row = 23
 # csv_path = "Fwd__Pinpoint_ML_Dataset\9to1_2017_GCSE_1H_and_2H_and_3H Linked Pinpoint Data_Cleaned.csv"
 # data_start_row = 6
 
-model = ['single_param', 'student_ability', 'question_difficulty', 'ability_difficulty_product']
+model = ['single_param', 'student_ability', 'question_difficulty', 'ability_difficulty_product', 'ADP_all_at_once']
 
 raw_data = pd.read_csv(csv_path, low_memory=False)
 exam_data_df, meta_data_df = parse_paper_data(raw_data[paper1_columns], data_start_row)
-run_model(exam_data_df, meta_data_df, model[3], binarise_method='mid', shuffle=True)
+run_model(exam_data_df, meta_data_df, model[4], binarise_method='mid', shuffle=False)
