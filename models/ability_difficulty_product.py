@@ -32,7 +32,6 @@ def train(learning_rate, n_iters, output_tensor, rng):
         probit_1 = 1/(1+torch.exp(-bs_matrix-bq_matrix))
         probit_0 = 1 - probit_1
         nll = -torch.sum(output_tensor*torch.log(probit_1) + (1-output_tensor)*torch.log(probit_0))
-
         nll.backward()
 
         with torch.no_grad():
