@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 import random
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -7,7 +8,7 @@ from models.ability_difficulty_product import probit_correct
 
 def train(learning_rate, n_iters, train_ts_vectorised, test_ts_vectorised, S, Q, rng):
 
-    t_arr, nll_train_arr, nll_test_arr = [], [], []
+    nll_train_arr, nll_test_arr = np.zeros(n_iters), np.zeros(n_iters)
 
     bs = torch.randn(S, requires_grad=True, generator=rng)
     bq = torch.randn(Q, requires_grad=True, generator=rng)
@@ -40,11 +41,9 @@ def train(learning_rate, n_iters, train_ts_vectorised, test_ts_vectorised, S, Q,
         if epoch % 100 == 0:
             print(epoch, nll, nll_test)
 
-        t_arr.append(epoch)
-        nll_train_arr.append(nll)
-        nll_test_arr.append(nll_test)
+        nll_train_arr[epoch], nll_test_arr[epoch] = nll, nll_test
 
-    return bs, bq, t_arr, nll_train_arr, nll_test_arr
+    return bs, bq, n_iters, nll_train_arr, nll_test_arr
 
 
 def predict(bs, bq, test_ts, rng):
@@ -73,11 +72,15 @@ def predict(bs, bq, test_ts, rng):
     return product_params_matrix, performance
 
 
-def train_product_vectorised(ts, df, S, Q, learning_rate, n_iters, rng):
+def train_product_vectorised(ts, df, rng, learning_rate, n_iters):
+
+    # Retaining pervious test set:
     # first_quadrant_vectorised_ts = vectorise_data(first_quadrant_ts, first_quadrant_df)
     # train_question_vectorised_ts = vectorise_data(train_question_ts, train_question_df)
     # train_student_vectorised_ts = vectorise_data(train_student_ts, train_student_df)
     # train_vectorised_ts = torch.cat((first_quadrant_vectorised_ts, train_question_vectorised_ts, train_student_vectorised_ts), dim=1)
+
+    S, Q = ts.shape[0], ts.shape[1]
     vectorised_ts = vectorise_data(ts, df)
 
     # shuffle
@@ -87,14 +90,14 @@ def train_product_vectorised(ts, df, S, Q, learning_rate, n_iters, rng):
     shuffled_ts = vectorised_ts[:, torch.tensor(col_idxs)]
     
     train_ts, test_ts = torch.split(shuffled_ts, int(S*Q*3/4), dim=1)
+    train_ts_size, test_ts_size = train_ts.shape[1], test_ts.shape[1]
 
-    bs, bq, t_arr, nll_train_arr, nll_test_arr = train(learning_rate, n_iters, train_ts, test_ts, S, Q, rng)
-    plt.plot(t_arr, nll_train_arr)
+    bs, bq, n_iters, nll_train_arr, nll_test_arr = train(learning_rate, n_iters, train_ts, test_ts, S, Q, rng)
+    plt.plot(range(n_iters), nll_train_arr/train_ts_size)
+    plt.plot(range(n_iters), nll_test_arr/test_ts_size)
     plt.title('Train and test nll')
     plt.ylabel('Negative log likelihood')
     plt.xlabel('epoch')
-
-    plt.plot(t_arr, nll_test_arr)
     plt.legend(['Train nll', 'Test nll'])
     plt.show()
 

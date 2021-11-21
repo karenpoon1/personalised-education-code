@@ -52,10 +52,7 @@ def run_model(exam_data_df, meta_data_df, model, binarise_method='mid', shuffle=
         seed_number = 1000
         rng = torch.Generator()
         rng.manual_seed(seed_number)
-        learning_rate = 0.00025
-        n_iters = 4500
-        S, Q = dataset_ts.shape[0], dataset_ts.shape[1]
-        train_product_vectorised(dataset_ts, binarised_df, S, Q, learning_rate, n_iters, rng)
+        train_product_vectorised(dataset_ts, binarised_df, rng, learning_rate=0.00025, n_iters=6500)
 
     elif model == 'ADP_meta':
         seed_number = 1000
@@ -63,12 +60,11 @@ def run_model(exam_data_df, meta_data_df, model, binarise_method='mid', shuffle=
         rng.manual_seed(seed_number)
         learning_rate = 0.00022
         n_iters = 3500
-        S, Q = dataset_ts.shape[0], dataset_ts.shape[1]
         
         meta_data = torch.tensor([max_scores.values])
         question_id = torch.tensor([int(entry[1:])-1 for entry in max_scores.columns.tolist()])
         meta_data_ts = torch.stack((question_id, meta_data), dim=0)
         print(meta_data_ts)
 
-        train_product_vectorised(dataset_ts, binarised_df, S, Q, learning_rate, n_iters, rng)
+        train_product_vectorised(dataset_ts, binarised_df, learning_rate, n_iters, rng)
     return
