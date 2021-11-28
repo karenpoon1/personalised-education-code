@@ -11,7 +11,9 @@ from models.student_ability_baseline import train_student_ability
 from models.question_difficulty_baseline import train_question_difficulty
 from models.ability_difficulty_product import train_product_alternate_quadrants, train_product_upper_left
 from models.ADP_vectorised import train_product_vectorised
-# from product_diff_meta import train_meta
+from models.ADP_vectorised_meta import train_product_meta
+from models.ADP_meta import train_product_upper_left_meta
+from models.ADP_vectorised_interactive import train_product_interactive
 
 def run_model(exam_data_df, meta_data_df, model, binarise_method='mid', shuffle=False):
 
@@ -46,25 +48,40 @@ def run_model(exam_data_df, meta_data_df, model, binarise_method='mid', shuffle=
         rng = torch.Generator()
         rng.manual_seed(seed_number)
         # train_product_alternate_quadrants(train_question_ts, train_student_ts, test_ts, 0.0003, 600, rng)
-        train_product_upper_left(first_quadrant_ts, train_question_ts, train_student_ts, test_ts, 0.0002, 1, rng)
+        train_product_upper_left(first_quadrant_ts, train_question_ts, train_student_ts, test_ts, 0.0002, 10000, rng)
 
     elif model == 'ADP_all_at_once':
         seed_number = 1000
         rng = torch.Generator()
         rng.manual_seed(seed_number)
-        train_product_vectorised(dataset_ts, binarised_df, rng, learning_rate=0.00025, n_iters=6500)
+        train_product_vectorised(dataset_ts, binarised_df, rng, learning_rate=0.00025, n_iters=3600)
+
+    elif model == 'ADP_meta_vectorised':
+        seed_number = 1000
+        rng = torch.Generator()
+        rng.manual_seed(seed_number)
+        
+        ps_meta = meta_data_df.loc['Difficulty'].astype(float)
+        ps_meta_ts = torch.tensor(ps_meta.values)
+        train_product_meta(dataset_ts, binarised_df, ps_meta_ts, rng, learning_rate=0.00025, n_iters=1800, held_out_test=False)
 
     elif model == 'ADP_meta':
         seed_number = 1000
         rng = torch.Generator()
         rng.manual_seed(seed_number)
-        learning_rate = 0.00022
-        n_iters = 3500
         
-        meta_data = torch.tensor([max_scores.values])
-        question_id = torch.tensor([int(entry[1:])-1 for entry in max_scores.columns.tolist()])
-        meta_data_ts = torch.stack((question_id, meta_data), dim=0)
-        print(meta_data_ts)
+        ps_meta = meta_data_df.loc['Difficulty'].astype(float)
+        ps_meta_ts = torch.tensor(ps_meta.values)
+        train_product_upper_left_meta(first_quadrant_ts, train_question_ts, train_student_ts, test_ts, ps_meta_ts, rng, learning_rate=0.0002, n_iters=45)
 
-        train_product_vectorised(dataset_ts, binarised_df, learning_rate, n_iters, rng)
+    elif model == 'ADP_interactive_vectorised':
+        seed_number = 1000
+        rng = torch.Generator()
+        rng.manual_seed(seed_number)
+        
+        ps_meta = meta_data_df.loc['Difficulty'].astype(float)
+        ps_meta_ts = torch.tensor(ps_meta.values)
+        train_product_interactive(dataset_ts, binarised_df, ps_meta_ts, rng, learning_rate=0.00025, n_iters=5000, held_out_test=False)
+        print(f'Running ADP_interactive_vectorised: rate 0.00025, iters 5000, old data, held_out False')
+
     return
