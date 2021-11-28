@@ -3,10 +3,12 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 import seaborn as sns
-from utils.shuffle_data import shuffle_cols
+from sklearn.metrics import confusion_matrix
+
+from utils.vectorise_data import vectorise_data
 from models.ability_difficulty_product import probit_correct
 
-def train(learning_rate, n_iters, train_ts_vectorised, test_ts_vectorised, S, Q, rng):
+def train(train_ts_vectorised, test_ts_vectorised, S, Q, rng, learning_rate, n_iters):
 
     nll_train_arr, nll_test_arr = np.zeros(n_iters), np.zeros(n_iters)
 
@@ -18,17 +20,15 @@ def train(learning_rate, n_iters, train_ts_vectorised, test_ts_vectorised, S, Q,
         bq_vector = torch.index_select(bq, 0, train_ts_vectorised[2])
 
         probit_1 = 1/(1+torch.exp(-bs_vector-bq_vector))
-        probit_0 = 1 - probit_1
-        nll = -torch.sum(train_ts_vectorised[0]*torch.log(probit_1) + (1-train_ts_vectorised[0])*torch.log(probit_0))
+        nll = -torch.sum(train_ts_vectorised[0]*torch.log(probit_1) + (1-train_ts_vectorised[0])*torch.log(1-probit_1))
         nll.backward()
 
         # calc test nll
-        bs_vector = torch.index_select(bs, 0, test_ts_vectorised[1])
-        bq_vector = torch.index_select(bq, 0, test_ts_vectorised[2])
+        bs_vector_test = torch.index_select(bs, 0, test_ts_vectorised[1])
+        bq_vector_test = torch.index_select(bq, 0, test_ts_vectorised[2])
 
-        probit_1 = 1/(1+torch.exp(-bs_vector-bq_vector))
-        probit_0 = 1 - probit_1
-        nll_test = -torch.sum(test_ts_vectorised[0]*torch.log(probit_1) + (1-test_ts_vectorised[0])*torch.log(probit_0))
+        probit_1_test = 1/(1+torch.exp(-bs_vector_test-bq_vector_test))
+        nll_test = -torch.sum(test_ts_vectorised[0]*torch.log(probit_1_test) + (1-test_ts_vectorised[0])*torch.log(1-probit_1_test))
 
         with torch.no_grad():
             bs -= learning_rate * bs.grad
@@ -57,6 +57,9 @@ def predict(bs, bq, test_ts, rng):
 
     performance = torch.sum(torch.eq(test_ts[0], predictions)) / torch.numel(test_ts[0])
     performance = float(performance)*100
+
+    conf_matrix = confusion_matrix(test_ts[0].numpy(), predictions.detach().numpy())
+    conf_matrix = conf_matrix*100/torch.numel(test_ts[0])
     
     # real_portion = test_ts.detach()
     # real_portion = real_portion[:50, :]
@@ -69,7 +72,7 @@ def predict(bs, bq, test_ts, rng):
     # sns.heatmap(portion, linewidth=0.5)
     # plt.title('Predicted probabilities')
     # plt.show()
-    return product_params_matrix, performance
+    return product_params_matrix, performance, conf_matrix
 
 
 def train_product_vectorised(ts, df, rng, learning_rate, n_iters):
@@ -92,7 +95,7 @@ def train_product_vectorised(ts, df, rng, learning_rate, n_iters):
     train_ts, test_ts = torch.split(shuffled_ts, int(S*Q*3/4), dim=1)
     train_ts_size, test_ts_size = train_ts.shape[1], test_ts.shape[1]
 
-    bs, bq, n_iters, nll_train_arr, nll_test_arr = train(learning_rate, n_iters, train_ts, test_ts, S, Q, rng)
+    bs, bq, n_iters, nll_train_arr, nll_test_arr = train(train_ts, test_ts, S, Q, rng, learning_rate, n_iters)
     plt.plot(range(n_iters), nll_train_arr/train_ts_size)
     plt.plot(range(n_iters), nll_test_arr/test_ts_size)
     plt.title('Train and test nll')
@@ -101,26 +104,12 @@ def train_product_vectorised(ts, df, rng, learning_rate, n_iters):
     plt.legend(['Train nll', 'Test nll'])
     plt.show()
 
-    product_params_matrix, performance = predict(bs, bq, test_ts, rng)
+    product_params_matrix, performance, conf_matrix = predict(bs, bq, test_ts, rng)
 
     print(f"bs (student params): {bs}")
     print(f"bq (question params): {bq}")
     print(f"Predicted probabilities: {product_params_matrix}")
     print(f"Percentage accuracy for product baseline: {performance}")
+    print(f"Confusion matrix: {conf_matrix}")
 
-    return bs, bq, product_params_matrix, performance
-
-def vectorise_data(data_ts, data_df):
-    S, Q = data_ts.shape[0], data_ts.shape[1]
-    
-    reshaped_data = data_ts.reshape(-1).type(torch.int) # unstack data
-    
-    student_id = torch.tensor(data_df.index.values)
-    student_id = student_id.repeat(Q, 1).T.reshape(-1)
-    
-    question_id = torch.tensor([int(entry[1:])-1 for entry in data_df.columns.tolist()])
-    question_id = question_id.repeat(S)
-
-    vectorised_data_ts = torch.stack((reshaped_data, student_id, question_id), dim=0)
-
-    return vectorised_data_ts
+    return bs, bq, product_params_matrix, performance, conf_matrix

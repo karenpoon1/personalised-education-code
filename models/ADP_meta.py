@@ -1,134 +1,144 @@
 import torch
-import random
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from utils.shuffle_data import shuffle_cols
-from models.ability_difficulty_product import probit_correct
+from sklearn.metrics import confusion_matrix
 
-def train(learning_rate, n_iters, train_ts_vectorised, test_ts_vectorised, meta_ts, S, Q, rng):
+def probit_correct(bs, bq, ps):
+    return 1/(1+torch.exp(-bs-bq-ps))
 
-    t_arr, nll_train_arr, nll_test_arr = [], [], []
 
-    bs = torch.randn(S, requires_grad=True, generator=rng)
-    bq = torch.randn(Q, requires_grad=True, generator=rng)
-    ws = torch.randn(S, requires_grad=True, generator=rng)
+def train(train_ts, test_ts, meta_data, rng, learning_rate, n_iters):
+
+    nll_train_arr = np.zeros(n_iters)
+    S = train_ts.size()[0] # no. of rows
+    Q = train_ts.size()[1] # no. of cols
+
+    bs_tensor = torch.randn(S, requires_grad=True, generator=rng)
+    bq_tensor = torch.randn(Q, requires_grad=True, generator=rng)
+    ws_tensor = torch.randn(S, requires_grad=True, generator=rng)
 
     for epoch in range(n_iters):
-        bs_vector = torch.index_select(bs, 0, train_ts_vectorised[1])
-        bq_vector = torch.index_select(bq, 0, train_ts_vectorised[2])
-        
-        ws_vector = torch.index_select(ws, 0, train_ts_vectorised[1])
-        meta_vector = torch.index_select(meta_ts, 0, train_ts_vectorised[2])
-        ps_vector = ws_vector*meta_vector
 
-        probit_1 = 1/(1+torch.exp(-bs_vector-bq_vector-ps_vector))
-        probit_0 = 1 - probit_1
-        nll = -torch.sum(train_ts_vectorised[0]*torch.log(probit_1) + (1-train_ts_vectorised[0])*torch.log(probit_0))
+        bs_matrix = bs_tensor.repeat(Q, 1)
+        bs_matrix = torch.transpose(bs_matrix, 0, 1)
+        bq_matrix = bq_tensor.repeat(S, 1)
+
+        ws_matrix = ws_tensor.repeat(Q, 1)
+        ws_matrix = torch.transpose(ws_matrix, 0, 1)
+        meta_matrix = meta_data.repeat(S, 1)
+        ps_matrix = ws_matrix*meta_matrix
+        
+        probit_1 = 1/(1+torch.exp(-bs_matrix-bq_matrix-ps_matrix))
+        nll = -torch.sum(train_ts*torch.log(probit_1) + (1-train_ts)*torch.log(1-probit_1))
         nll.backward()
 
-        nll_test = 0
-        # calc test nll
-        # bs_vector = torch.index_select(bs, 0, test_ts_vectorised[1])
-        # bq_vector = torch.index_select(bq, 0, test_ts_vectorised[2])
-
-        # probit_1 = 1/(1+torch.exp(-bs_vector-bq_vector))
-        # probit_0 = 1 - probit_1
-        # nll_test = -torch.sum(test_ts_vectorised[0]*torch.log(probit_1) + (1-test_ts_vectorised[0])*torch.log(probit_0))
-
         with torch.no_grad():
-            bs -= learning_rate * bs.grad
-            bq -= learning_rate * bq.grad
-            ws -= learning_rate * ws.grad
+            bs_tensor -= learning_rate * bs_tensor.grad
+            bq_tensor -= learning_rate * bq_tensor.grad
+            ws_tensor -= learning_rate * ws_tensor.grad
 
         # zero the gradients after updating
-        bs.grad.zero_()
-        bq.grad.zero_()
-        ws.grad.zero_()
+        bs_tensor.grad.zero_()
+        bq_tensor.grad.zero_()
+        ws_tensor.grad.zero_()
 
         if epoch % 100 == 0:
-            print(epoch, nll, nll_test)
+            print(epoch,nll)
 
-        t_arr.append(epoch)
-        nll_train_arr.append(nll)
-        nll_test_arr.append(nll_test)
+        nll_train_arr[epoch] = nll
 
-    return bs, bq, ws, t_arr, nll_train_arr, nll_test_arr
+    return bs_tensor, bq_tensor, ws_tensor, n_iters, nll_train_arr
 
 
-def predict(bs, bq, ws, test_ts, meta_ts, rng):
+def predict(bs_tensor, bq_tensor, ws_tensor, test_output_ts, meta_ts, rng):
     
-    bs_vector = torch.index_select(bs, 0, test_ts[1])
-    bq_vector = torch.index_select(bq, 0, test_ts[2])
-    ws_vector = torch.index_select(ws, 0, test_ts[1])
-    meta_vector = torch.index_select(meta_ts, 0, test_ts[2])
-    ps_vector = ws_vector*meta_vector
+    bs_matrix = bs_tensor.repeat(len(bq_tensor), 1)
+    bs_matrix = torch.transpose(bs_matrix, 0, 1)
+    bq_matrix = bq_tensor.repeat(len(bs_tensor), 1)
 
-    product_params_matrix = probit_correct(bs_vector, bq_vector)
+    ws_matrix = ws_tensor.repeat(len(bq_tensor), 1)
+    ws_matrix = torch.transpose(ws_matrix, 0, 1)
+    meta_matrix = meta_ts.repeat(len(bs_tensor), 1)
+    ps_matrix = ws_matrix*meta_matrix
+    
+    product_params_matrix = probit_correct(bs_matrix, bq_matrix, ps_matrix)
 
     predictions = torch.bernoulli(product_params_matrix, generator=rng)
 
-    performance = torch.sum(torch.eq(test_ts[0], predictions)) / torch.numel(test_ts[0])
+    performance = torch.sum(torch.eq(test_output_ts, predictions)) / torch.numel(test_output_ts)
     performance = float(performance)*100
+
+    test_output_ts_reshaped = test_output_ts.reshape(-1).type(torch.int)
+    predictions_reshaped = predictions.reshape(-1).type(torch.int)
+
+    conf_matrix = confusion_matrix(test_output_ts_reshaped.numpy(), predictions_reshaped.detach().numpy())
+    conf_matrix = conf_matrix*100/torch.numel(test_output_ts)
     
-    # real_portion = test_ts.detach()
-    # real_portion = real_portion[:50, :]
-    # sns.heatmap(real_portion, linewidth=0.5)
-    # plt.title('Real binarised data')
-    # plt.show()
-
-    # portion = product_params_matrix.detach()
-    # portion = portion[:50, :]
-    # sns.heatmap(portion, linewidth=0.5)
-    # plt.title('Predicted probabilities')
-    # plt.show()
-    return product_params_matrix, performance
-
-
-def train_product_vectorised(ts, df, meta_ts, S, Q, learning_rate, n_iters, rng):
-    # first_quadrant_vectorised_ts = vectorise_data(first_quadrant_ts, first_quadrant_df)
-    # train_question_vectorised_ts = vectorise_data(train_question_ts, train_question_df)
-    # train_student_vectorised_ts = vectorise_data(train_student_ts, train_student_df)
-    # train_vectorised_ts = torch.cat((first_quadrant_vectorised_ts, train_question_vectorised_ts, train_student_vectorised_ts), dim=1)
-    vectorised_ts = vectorise_data(ts, df)
-
-    # shuffle
-    col_idxs = list(range(vectorised_ts.shape[1]))
-    random.seed(1000)
-    random.shuffle(col_idxs)
-    shuffled_ts = vectorised_ts[:, torch.tensor(col_idxs)]
-    
-    train_ts, test_ts = torch.split(shuffled_ts, int(S*Q*3/4), dim=1)
-
-    bs, bq, ws, t_arr, nll_train_arr, nll_test_arr = train(learning_rate, n_iters, train_ts, test_ts, meta_ts, S, Q, rng)
-    plt.plot(t_arr, nll_train_arr)
-    plt.title('Train and test nll')
-    plt.ylabel('Negative log likelihood')
-    plt.xlabel('epoch')
-
-    # plt.plot(t_arr, nll_test_arr)
-    # plt.legend(['Train nll', 'Test nll'])
+    real_portion = test_output_ts.detach()
+    real_portion = real_portion[:50, :]
+    sns.heatmap(real_portion, linewidth=0.5)
+    plt.title('Real binarised data')
+    plt.xlabel('Questions')
+    plt.ylabel('Students')
     plt.show()
 
-    product_params_matrix, performance = predict(bs, bq, ws, test_ts, meta_ts, rng)
+    predicted_probit_portion = product_params_matrix.detach()
+    predicted_probit_portion = predicted_probit_portion[:50, :]
+    sns.heatmap(predicted_probit_portion, linewidth=0.5)
+    plt.title('Predicted probabilities')
+    plt.xlabel('Questions')
+    plt.ylabel('Students')
+    plt.show()
 
-    print(f"bs (student params): {bs}")
-    print(f"bq (question params): {bq}")
+    predicted_portion = predictions.detach()
+    predicted_portion = predicted_portion[:50, :]
+    sns.heatmap(predicted_portion, linewidth=0.5)
+    plt.title('Predicted output')
+    plt.xlabel('Questions')
+    plt.ylabel('Students')
+    plt.show()
+
+    return product_params_matrix, performance, conf_matrix
+
+
+def train_product_alternate_quadrants(first_train_quadrant_ts, second_train_quadrant_ts, test_output_ts, meta_ts, rng, learning_rate, n_iters):
+
+    bs_tensor, _, ws_tensor, t_arr, nll_arr = train(second_train_quadrant_ts, test_output_ts, meta_ts[:12], rng, learning_rate, n_iters)
+    plt.plot(t_arr, nll_arr)
+    plt.title('Training student params')
+    plt.ylabel('Negative log likelihood')
+    plt.xlabel('epoch')
+    plt.show()
+
+    _, bq_tensor, ws_tensor, t_arr, nll_arr = train(first_train_quadrant_ts, test_output_ts, meta_ts, rng, learning_rate, n_iters)
+    plt.plot(t_arr, nll_arr)
+    plt.title('Training question params')
+    plt.ylabel('Negative log likelihood')
+    plt.xlabel('epoch')
+    plt.show()
+
+    if len(bs_tensor) != test_output_ts.shape[0]:
+        bs_tensor = bs_tensor[-test_output_ts.shape[0]:]
+    if len(bq_tensor) != test_output_ts.shape[1]:
+        bq_tensor = bq_tensor[-test_output_ts.shape[1]:]
+
+    product_params_matrix, performance, conf_matrix = predict(bs_tensor, bq_tensor, test_output_ts, rng)
+
+    print(f"bs (student params): {bs_tensor}")
+    print(f"bq (question params): {bq_tensor}")
     print(f"Predicted probabilities: {product_params_matrix}")
     print(f"Percentage accuracy for product baseline: {performance}")
+    print(f"Confusion matrix: {conf_matrix}")
 
-    return bs, bq, product_params_matrix, performance
+    return bs_tensor, bq_tensor, product_params_matrix, performance, conf_matrix
 
-def vectorise_data(data_ts, data_df):
-    S, Q = data_ts.shape[0], data_ts.shape[1]
-    
-    reshaped_data = data_ts.reshape(-1).type(torch.int) # unstack data
-    
-    student_id = torch.tensor(data_df.index.values)
-    student_id = student_id.repeat(Q, 1).T.reshape(-1)
-    
-    question_id = torch.tensor([int(entry[1:])-1 for entry in data_df.columns.tolist()])
-    question_id = question_id.repeat(S)
 
-    vectorised_data_ts = torch.stack((reshaped_data, student_id, question_id), dim=0)
-
-    return vectorised_data_ts
+def train_product_upper_left_meta(first_quadrant_ts, train_question_ts, train_student_ts, test_ts, meta_ts, rng, learning_rate, n_iters):
+    upper_half_ts = torch.cat([first_quadrant_ts, train_question_ts], dim=1)
+    left_half_ts = torch.cat([first_quadrant_ts, train_student_ts], dim=0)
+    train_product_alternate_quadrants(upper_half_ts, left_half_ts, test_ts, meta_ts, rng, learning_rate, n_iters)
+    # bs_tensor, _, t_arr, nll_arr = train(learning_rate, 90, left_half_ts, rng)
+    # _, bq_tensor, t_arr, nll_arr = train(learning_rate, 80, upper_half_ts, rng)
+    # product_params_matrix, performance = predict(bs_tensor[-test_output_ts.shape[0]:], bq_tensor[-test_output_ts.shape[1]:], test_output_ts, rng)
+    return

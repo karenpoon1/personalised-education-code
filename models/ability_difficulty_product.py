@@ -1,7 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+from sklearn.metrics import confusion_matrix
 
 def probit_correct(bs, bq):
     return 1/(1+torch.exp(-bs-bq))
@@ -63,20 +63,38 @@ def predict(bs_tensor, bq_tensor, test_output_ts, rng):
 
     performance = torch.sum(torch.eq(test_output_ts, predictions)) / torch.numel(test_output_ts)
     performance = float(performance)*100
+
+    test_output_ts_reshaped = test_output_ts.reshape(-1).type(torch.int)
+    predictions_reshaped = predictions.reshape(-1).type(torch.int)
+
+    conf_matrix = confusion_matrix(test_output_ts_reshaped.numpy(), predictions_reshaped.detach().numpy())
+    conf_matrix = conf_matrix*100/torch.numel(test_output_ts)
     
     real_portion = test_output_ts.detach()
     real_portion = real_portion[:50, :]
     sns.heatmap(real_portion, linewidth=0.5)
     plt.title('Real binarised data')
+    plt.xlabel('Questions')
+    plt.ylabel('Students')
     plt.show()
 
-    portion = product_params_matrix.detach()
-    portion = portion[:50, :]
-    sns.heatmap(portion, linewidth=0.5)
+    predicted_probit_portion = product_params_matrix.detach()
+    predicted_probit_portion = predicted_probit_portion[:50, :]
+    sns.heatmap(predicted_probit_portion, linewidth=0.5)
     plt.title('Predicted probabilities')
+    plt.xlabel('Questions')
+    plt.ylabel('Students')
     plt.show()
 
-    return product_params_matrix, performance
+    predicted_portion = predictions.detach()
+    predicted_portion = predicted_portion[:50, :]
+    sns.heatmap(predicted_portion, linewidth=0.5)
+    plt.title('Predicted output')
+    plt.xlabel('Questions')
+    plt.ylabel('Students')
+    plt.show()
+
+    return product_params_matrix, performance, conf_matrix
 
 
 def train_product_alternate_quadrants(first_train_quadrant_ts, second_train_quadrant_ts, test_output_ts, learning_rate, n_iters, rng):
@@ -100,14 +118,15 @@ def train_product_alternate_quadrants(first_train_quadrant_ts, second_train_quad
     if len(bq_tensor) != test_output_ts.shape[1]:
         bq_tensor = bq_tensor[-test_output_ts.shape[1]:]
 
-    product_params_matrix, performance = predict(bs_tensor, bq_tensor, test_output_ts, rng)
+    product_params_matrix, performance, conf_matrix = predict(bs_tensor, bq_tensor, test_output_ts, rng)
 
     print(f"bs (student params): {bs_tensor}")
     print(f"bq (question params): {bq_tensor}")
     print(f"Predicted probabilities: {product_params_matrix}")
     print(f"Percentage accuracy for product baseline: {performance}")
+    print(f"Confusion matrix: {conf_matrix}")
 
-    return bs_tensor, bq_tensor, product_params_matrix, performance
+    return bs_tensor, bq_tensor, product_params_matrix, performance, conf_matrix
 
 
 def train_product_upper_left(first_quadrant_ts, train_question_output_ts, train_student_output_ts, test_output_ts, learning_rate, n_iters, rng):
