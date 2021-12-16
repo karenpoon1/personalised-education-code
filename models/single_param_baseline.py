@@ -1,10 +1,10 @@
 import torch
+import numpy as np
 
 # df = pd.read_csv("Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", skiprows=list(range(1,24)), usecols=list(range(2,26)))
 # max_scores = pd.read_csv("Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv", nrows = 1, skiprows=[1], usecols=list(range(2,26)))
 
-def train_single_param(first_quadrant_ts, train_question_ts, train_student_ts, test_ts, seed_number):
-
+def train(first_quadrant_ts, train_question_ts, train_student_ts, test_ts, seed_number):
     rng = torch.Generator()
     rng.manual_seed(seed_number)
 
@@ -18,3 +18,8 @@ def train_single_param(first_quadrant_ts, train_question_ts, train_student_ts, t
     performance = torch.sum(torch.eq(test_ts, predictions)) / torch.numel(test_ts)
     performance = float(performance)*100
     return performance
+
+
+def train_single_param(first_quadrant_ts, train_question_ts, train_student_ts, test_ts):
+    performance_arr = [train(first_quadrant_ts, train_question_ts, train_student_ts, test_ts, i) for i in range(100)]
+    return np.mean(performance_arr), np.std(performance_arr)

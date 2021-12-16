@@ -1,6 +1,7 @@
 import torch
+import numpy as np
 
-def train_question_difficulty(train_ts, test_ts, seed_number):
+def train(train_ts, test_ts, seed_number):
     rng = torch.Generator()
     rng.manual_seed(seed_number)
 
@@ -12,3 +13,7 @@ def train_question_difficulty(train_ts, test_ts, seed_number):
     performance = torch.sum(torch.eq(test_ts, predictions)) / torch.numel(test_ts)
     performance = float(performance)*100
     return performance
+
+def train_question_difficulty(train_question_ts, test_ts):
+    performance_arr = [train(train_question_ts, test_ts, i) for i in range(100)]
+    return np.mean(performance_arr), np.std(performance_arr)

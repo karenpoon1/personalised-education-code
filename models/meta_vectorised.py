@@ -1,60 +1,79 @@
 import torch
 import numpy as np
+import random
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 
-from models.ADP_quadrant import probit_correct
+from utils.vectorise_data import vectorise_data
+from utils.split_data import split_to_4quadrants, split_to_4quadrants_df
 
-def train(train_ts, test_ts, S, Q, rng, learning_rate, iters):
+def probit_correct(bs, bq, ps):
+    return 1/(1+torch.exp(-bs-bq-ps))
+
+def train(train_ts, test_ts, meta_ts, S, Q, rng, learning_rate, iters):
 
     nll_train_arr, nll_test_arr = np.zeros(iters), np.zeros(iters)
 
-    # Randomly initialise random student, question parameters
+    # Randomly initialise student, question, problem solving parameters
     bs = torch.randn(S, requires_grad=True, generator=rng)
     bq = torch.randn(Q, requires_grad=True, generator=rng)
+    ws = torch.randn(S, requires_grad=True, generator=rng)
 
     for epoch in range(iters):
         # Train set params
         bs_train = torch.index_select(bs, 0, train_ts[1])
         bq_train = torch.index_select(bq, 0, train_ts[2])
+        ws_train = torch.index_select(ws, 0, train_ts[1])
         # Train nll
-        probit_1 = 1/(1+torch.exp(-bs_train-bq_train))
+        meta_train = torch.index_select(meta_ts, 0, train_ts[2])
+        ps_train = ws_train*meta_train
+        probit_1 = 1/(1+torch.exp(-bs_train-bq_train-ps_train))
         nll = -torch.sum(train_ts[0]*torch.log(probit_1) + (1-train_ts[0])*torch.log(1-probit_1))
         nll.backward()
 
         # Test set params
-        bs_train_test = torch.index_select(bs, 0, test_ts[1])
-        bq_train_test = torch.index_select(bq, 0, test_ts[2])
+        bs_test = torch.index_select(bs, 0, test_ts[1])
+        bq_test = torch.index_select(bq, 0, test_ts[2])
+        ws_test = torch.index_select(ws, 0, test_ts[1])
         # Test nll
-        probit_1_test = 1/(1+torch.exp(-bs_train_test-bq_train_test))
+        nll_test = 0
+        meta_test = torch.index_select(meta_ts, 0, test_ts[2])
+        ps_test = ws_test*meta_test
+        probit_1_test = 1/(1+torch.exp(-bs_test-bq_test-ps_test))
         nll_test = -torch.sum(test_ts[0]*torch.log(probit_1_test) + (1-test_ts[0])*torch.log(1-probit_1_test))
 
         # Gradient descent
         with torch.no_grad():
             bs -= learning_rate * bs.grad
             bq -= learning_rate * bq.grad
+            ws -= learning_rate * ws.grad
 
         # Zero gradients after updating
         bs.grad.zero_()
         bq.grad.zero_()
+        ws.grad.zero_()
 
         if epoch % 10 == 0:
             print(epoch, nll, nll_test)
-
+        
         nll_train_arr[epoch], nll_test_arr[epoch] = nll, nll_test
 
     print(epoch, nll, nll_test)
-    return bs, bq, nll_train_arr, nll_test_arr
+    return bs, bq, ws, nll_train_arr, nll_test_arr
 
 
-def predict(bs, bq, test_ts, rng, Q_test):
+def predict(trained_bs, trained_bq, trained_ws, test_ts, meta_ts, rng, Q_test):
     
     # Test set params after training
-    bs_test = torch.index_select(bs, 0, test_ts[1])
-    bq_test = torch.index_select(bq, 0, test_ts[2])
+    bs_test = torch.index_select(trained_bs, 0, test_ts[1])
+    bq_test = torch.index_select(trained_bq, 0, test_ts[2])
+    ws_test = torch.index_select(trained_ws, 0, test_ts[1])
 
-    predicted_probit = probit_correct(bs_test, bq_test)
+    meta_test = torch.index_select(meta_ts, 0, test_ts[2])
+    ps_test = ws_test*meta_test
+
+    predicted_probit = probit_correct(bs_test, bq_test, ps_test)
     predictions = torch.bernoulli(predicted_probit, generator=rng)
 
     performance = torch.sum(torch.eq(test_ts[0], predictions)) / torch.numel(test_ts[0])
@@ -96,10 +115,10 @@ def predict(bs, bq, test_ts, rng, Q_test):
     return performance, conf_matrix
 
 
-def train_product_vectorised(train_ts, test_ts, S, Q, rng, learning_rate, iters, Q_test):
+def train_meta_vectorised(train_vectorised_ts, test_vectorised_ts, S, Q, meta_ts, rng, learning_rate, iters, Q_test):
 
-    bs, bq, nll_train_arr, nll_test_arr = train(train_ts, test_ts, S, Q, rng, learning_rate, iters)
-    train_ts_size, test_ts_size = train_ts.shape[1], test_ts.shape[1]
+    trained_bs, trained_bq, trained_ws, nll_train_arr, nll_test_arr = train(train_vectorised_ts, test_vectorised_ts, meta_ts, S, Q, rng, learning_rate, iters)
+    train_ts_size, test_ts_size = train_vectorised_ts.shape[1], test_vectorised_ts.shape[1]
 
     plt.plot(range(iters), nll_train_arr/train_ts_size)
     plt.plot(range(iters), nll_test_arr/test_ts_size)
@@ -109,5 +128,5 @@ def train_product_vectorised(train_ts, test_ts, S, Q, rng, learning_rate, iters,
     plt.legend(['Train nll', 'Test nll'])
     plt.show()
 
-    performance, conf_matrix = predict(bs, bq, test_ts, rng, Q_test)
+    performance, conf_matrix = predict(trained_bs, trained_bq, trained_ws, test_vectorised_ts, meta_ts, rng, Q_test)
     return performance, conf_matrix

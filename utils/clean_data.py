@@ -9,4 +9,4 @@ def thres_score_range(df, max_scores):
         max_score = max_scores[col]
         df.loc[df[col] > max_score, col] = max_score
         df.loc[df[col] < 0, col] = 0
-    return df
+    return df.copy()

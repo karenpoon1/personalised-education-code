@@ -5,58 +5,56 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 
-from utils.vectorise_data import vectorise_data
+from utils.vectorise_data import vectorise_data, vectorise_unstructured_data
 from utils.split_data import split_to_4quadrants, split_to_4quadrants_df
 
 def probit_correct(bs, bq, i):
     return 1/(1+torch.exp(-bs-bq-i))
 
-def train(train_ts_vectorised, test_ts_vectorised, meta_ts, S, Q, rng, learning_rate, n_iters):
+def train(train_ts_vectorised, test_ts_vectorised, meta_ts, S, Q, rng, learning_rate, iters):
 
-    nll_train_arr, nll_test_arr = np.zeros(n_iters), np.zeros(n_iters)
+    nll_train_arr, nll_test_arr = np.zeros(iters), np.zeros(iters)
     
     dimension = 3
+    # Randomly initialise student, question, interactive parameters
     bs = torch.randn(S, requires_grad=True, generator=rng)
     bq = torch.randn(Q, requires_grad=True, generator=rng)
     xs = torch.randn((dimension,S), requires_grad=True, generator=rng)
     xq = torch.randn((dimension,Q), requires_grad=True, generator=rng)
 
-    for epoch in range(n_iters):
-        bs_vector = torch.index_select(bs, 0, train_ts_vectorised[1])
-        bq_vector = torch.index_select(bq, 0, train_ts_vectorised[2])
-
-        xs_vector = torch.index_select(xs, 1, train_ts_vectorised[1])
-        xq_vector = torch.index_select(xq, 1, train_ts_vectorised[2])
-        
-        # interactive bias
-        interactive_vector = xs_vector*xq_vector
+    for epoch in range(iters):
+        # Train set params
+        bs_train = torch.index_select(bs, 0, train_ts_vectorised[1])
+        bq_train = torch.index_select(bq, 0, train_ts_vectorised[2])
+        xs_train = torch.index_select(xs, 1, train_ts_vectorised[1])
+        xq_train = torch.index_select(xq, 1, train_ts_vectorised[2])
+        # Train nll
+        interactive_vector = xs_train*xq_train
         interactive_vector = torch.sum(interactive_vector, 0)
-
-        probit_1 = 1/(1+torch.exp(-bs_vector-bq_vector-interactive_vector))
+        probit_1 = 1/(1+torch.exp(-bs_train-bq_train-interactive_vector))
         nll = -torch.sum(train_ts_vectorised[0]*torch.log(probit_1) + (1-train_ts_vectorised[0])*torch.log(1-probit_1))
         nll.backward()
 
-        # calc test nll
+        # Test set params
+        bs_test = torch.index_select(bs, 0, test_ts_vectorised[1])
+        bq_test = torch.index_select(bq, 0, test_ts_vectorised[2])
+        xs_test = torch.index_select(xs, 1, test_ts_vectorised[1])
+        xq_test = torch.index_select(xq, 1, test_ts_vectorised[2])
+        # Test nll
         nll_test = 0
-        bs_vector_test = torch.index_select(bs, 0, test_ts_vectorised[1])
-        bq_vector_test = torch.index_select(bq, 0, test_ts_vectorised[2])
-
-        xs_vector_test = torch.index_select(xs, 1, test_ts_vectorised[1])
-        xq_vector_test = torch.index_select(xq, 1, test_ts_vectorised[2])
-
-        interactive_vector_test = xs_vector_test*xq_vector_test
+        interactive_vector_test = xs_test*xq_test
         interactive_vector_test = torch.sum(interactive_vector_test, 0)
-
-        probit_1_test = 1/(1+torch.exp(-bs_vector_test-bq_vector_test-interactive_vector_test))
+        probit_1_test = 1/(1+torch.exp(-bs_test-bq_test-interactive_vector_test))
         nll_test = -torch.sum(test_ts_vectorised[0]*torch.log(probit_1_test) + (1-test_ts_vectorised[0])*torch.log(1-probit_1_test))
 
+        # Gradient descent
         with torch.no_grad():
             bs -= learning_rate * bs.grad
             bq -= learning_rate * bq.grad
             xs -= learning_rate * xs.grad
             xq -= learning_rate * xq.grad
 
-        # zero the gradients after updating
+        # Zero gradients after updating
         bs.grad.zero_()
         bq.grad.zero_()
         xs.grad.zero_()
@@ -66,24 +64,23 @@ def train(train_ts_vectorised, test_ts_vectorised, meta_ts, S, Q, rng, learning_
             print(epoch, nll, nll_test)
         
         nll_train_arr[epoch], nll_test_arr[epoch] = nll, nll_test
-
-    return bs, bq, xs, xq, n_iters, nll_train_arr, nll_test_arr
+    
+    print(epoch, nll, nll_test)
+    return bs, bq, xs, xq, nll_train_arr, nll_test_arr
 
 
 def predict(bs, bq, xs, xq, test_ts, meta_ts, rng, held_out_test):
     
-    bs_vector = torch.index_select(bs, 0, test_ts[1])
-    bq_vector = torch.index_select(bq, 0, test_ts[2])
+    bs_test = torch.index_select(bs, 0, test_ts[1])
+    bq_test = torch.index_select(bq, 0, test_ts[2])
+    xs_test = torch.index_select(xs, 1, test_ts[1])
+    xq_test = torch.index_select(xq, 1, test_ts[2])
 
-    xs_vector = torch.index_select(xs, 1, test_ts[1])
-    xq_vector = torch.index_select(xq, 1, test_ts[2])
-
-    interactive_vector = xs_vector*xq_vector
+    interactive_vector = xs_test*xq_test
     interactive_vector = torch.sum(interactive_vector, 0)
 
-    product_params_matrix = probit_correct(bs_vector, bq_vector, interactive_vector)
-
-    predictions = torch.bernoulli(product_params_matrix, generator=rng)
+    predicted_probit = probit_correct(bs_test, bq_test, interactive_vector)
+    predictions = torch.bernoulli(predicted_probit, generator=rng)
 
     performance = torch.sum(torch.eq(test_ts[0], predictions)) / torch.numel(test_ts[0])
     performance = float(performance)*100
@@ -95,7 +92,7 @@ def predict(bs, bq, xs, xq, test_ts, meta_ts, rng, held_out_test):
         no_questions = 12
         print(test_ts[0], len(test_ts[0]))
         test_ts_reshaped = test_ts[0].reshape(int(len(test_ts[0])/no_questions),no_questions)
-        product_params_matrix_reshaped = product_params_matrix.reshape(int(len(product_params_matrix)/no_questions),no_questions)
+        product_params_matrix_reshaped = predicted_probit.reshape(int(len(predicted_probit)/no_questions),no_questions)
         predictions_reshaped = predictions.reshape(int(len(predictions)/no_questions),no_questions)
         
         real_portion = test_ts_reshaped.detach()
@@ -122,10 +119,10 @@ def predict(bs, bq, xs, xq, test_ts, meta_ts, rng, held_out_test):
         plt.ylabel('Students')
         plt.show()
 
-    return product_params_matrix, performance, conf_matrix
+    return performance, conf_matrix
 
 
-def train_product_interactive(ts, df, meta_ts, rng, learning_rate, n_iters, held_out_test):
+def train_interactive(ts, df, meta_ts, rng, learning_rate, iters, held_out_test):
 
     S, Q = ts.shape[0], ts.shape[1]
 
@@ -141,6 +138,16 @@ def train_product_interactive(ts, df, meta_ts, rng, learning_rate, n_iters, held
         train_vectorised_ts = torch.cat((first_quadrant_vectorised_ts, train_question_vectorised_ts, train_student_vectorised_ts), dim=1)
         test_vectorised_ts = vectorise_data(test_ts, test_df)
 
+        # Split train and test set
+        # S_start, S_end, Q_start, Q_end = int(S*0.5), int(S), int(Q*0.5), int(Q)
+        # train_ts = torch.clone(ts)
+        # train_ts[S_start:S_end, Q_start:Q_end] = float('nan')
+        # test_ts = torch.clone(ts[S_start:, Q_start:])
+        # Q_test = test_ts.shape[1]
+        # # Vectorise train and test set
+        # train_vectorised_ts = vectorise_unstructured_data(train_ts, [0,S], [0,Q], shuffle=False)
+        # test_vectorised_ts = vectorise_unstructured_data(test_ts, [S_start, S_end], [Q_start, Q_end], shuffle=False)
+
     else:
         vectorised_ts = vectorise_data(ts, df)
 
@@ -154,23 +161,14 @@ def train_product_interactive(ts, df, meta_ts, rng, learning_rate, n_iters, held
 
     train_ts_size, test_ts_size = train_vectorised_ts.shape[1], test_vectorised_ts.shape[1]
 
-    bs, bq, xs, xq, n_iters, nll_train_arr, nll_test_arr = train(train_vectorised_ts, test_vectorised_ts, meta_ts, S, Q, rng, learning_rate, n_iters)
-    plt.plot(range(n_iters), nll_train_arr/train_ts_size)
-    plt.plot(range(n_iters), nll_test_arr/test_ts_size)
+    bs, bq, xs, xq, nll_train_arr, nll_test_arr = train(train_vectorised_ts, test_vectorised_ts, meta_ts, S, Q, rng, learning_rate, iters)
+    plt.plot(range(iters), nll_train_arr/train_ts_size)
+    plt.plot(range(iters), nll_test_arr/test_ts_size)
     plt.title('Train and test nll')
     plt.ylabel('Negative log likelihood')
     plt.xlabel('epoch')
     plt.legend(['Train nll', 'Test nll'])
     plt.show()
 
-    product_params_matrix, performance, conf_matrix = predict(bs, bq, xs, xq, test_vectorised_ts, meta_ts, rng, held_out_test)
-
-    print(f"bs (student params): {bs}")
-    print(f"bq (question params): {bq}")
-    print(f"xs (interative student multi dimensional params): {xs}")
-    print(f"xq (interative question multi dimensional params): {xq}")
-    print(f"Predicted probabilities: {product_params_matrix}")
-    print(f"Percentage accuracy for product baseline: {performance}")
-    print(f"Confusion matrix: {conf_matrix}")
-
-    return bs, bq, product_params_matrix, performance, conf_matrix
+    performance, conf_matrix = predict(bs, bq, xs, xq, test_vectorised_ts, meta_ts, rng, held_out_test)
+    return performance, conf_matrix
