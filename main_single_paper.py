@@ -1,6 +1,7 @@
 import pandas as pd
 
 from utils.parse_data import parse_paper_data
+from utils.preprocess_data import process_raw
 from run_model import Models
 from models.ADP import ADP
 
@@ -33,6 +34,8 @@ new_exam_data_df, new_meta_data_df = parse_paper_data(new_raw_data, new_paper_st
 # new_data_models.meta(iters=1520)
 # new_data_models.interactive(iters=2)
 
-S, Q = new_exam_data_df.shape[0], new_exam_data_df.shape[1] # Data block size
-my_ADP = ADP(new_exam_data_df, new_meta_data_df, [int(S/2), S], [int(Q/2), Q])
-my_ADP.run(learning_rate=0.00025, iters=4550)
+_, new_exam_data_ts = process_raw(new_exam_data_df, new_meta_data_df, binarise_method='mid', shuffle=True)
+
+S, Q = new_exam_data_ts.shape[0], new_exam_data_ts.shape[1] # Data block size
+my_ADP = ADP(new_exam_data_ts, [int(S/2), S], [int(Q/2), Q])
+my_ADP.run(learning_rate=0.00025, iters=100)

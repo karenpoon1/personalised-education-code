@@ -5,16 +5,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 
-from utils.clean_data import thres_score_range
-from utils.binarise_data import binarise_by_mid, binarise_by_avg
-from utils.shuffle_data import shuffle_cols
 from utils.split_and_vectorise import split_and_vectorise
 
 class ADP:
-    def __init__(self, raw_data_df, raw_meta_df, testset_row_range, testset_col_range, binarise_method='mid', shuffle=True, seed_number=1000) -> None:
-        self.raw_data_df = raw_data_df
-        self.raw_meta_df = raw_meta_df
-        self.max_scores = raw_meta_df.loc['Max'].astype(float)
+    def __init__(self, data_ts, testset_row_range, testset_col_range, binarise_method='mid', shuffle=True, seed_number=1000) -> None:
+        self.data_ts = data_ts
         
         self.testset_row_range = testset_row_range
         self.testset_col_range = testset_col_range
@@ -30,29 +25,15 @@ class ADP:
     def probit_correct(bs, bq):
         return 1/(1+torch.exp(-bs-bq))
 
-    def run(self, learning_rate, iters):
-        _, processed_ts = self.process_raw()
-        train_vectorised_ts, test_vectorised_ts = split_and_vectorise(processed_ts, self.testset_row_range, self.testset_col_range)
+    def run(self, learning_rate, iters, shuffle=False):
+        train_vectorised_ts, test_vectorised_ts = split_and_vectorise(self.data_ts, self.testset_row_range, self.testset_col_range, shuffle)
         
-        S, Q = processed_ts.shape[0], processed_ts.shape[1] # Data block size
+        S, Q = self.data_ts.shape[0], self.data_ts.shape[1] # Data block size
         trained_bs, trained_bq, nll_train_arr, nll_test_arr, acc_arr = self.train(train_vectorised_ts, test_vectorised_ts, S, Q, learning_rate, iters)
         accuracy, conf_matrix = self.predict(trained_bs, trained_bq, test_vectorised_ts, vis=True)
 
         self.plot_result(nll_train_arr/train_vectorised_ts.shape[1], nll_test_arr/test_vectorised_ts.shape[1], acc_arr, iters)
         print(f"ADP vectorised (rate={learning_rate}, iters={iters}, binarise={self.binarise_method}, shuffle={self.shuffle}) -> accuracy: {accuracy}, confusion matrix: \n{conf_matrix}")
-        
-
-    def process_raw(self):
-        thres_df = thres_score_range(self.raw_data_df, self.max_scores)
-        if self.binarise_method == 'mid':
-            binarised_df = binarise_by_mid(thres_df, self.max_scores)
-        elif self.binarise_method == 'avg':
-            binarised_df = binarise_by_avg(thres_df)
-        
-        if self.shuffle:
-            binarised_df = shuffle_cols(binarised_df)
-
-        return binarised_df, torch.tensor(binarised_df.values)
 
 
     def train(self, train_ts, test_ts, S, Q, learning_rate, iters):
