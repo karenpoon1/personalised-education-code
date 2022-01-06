@@ -1,10 +1,11 @@
 import torch
+import math
 
 def split_to_4quadrants(dataset_ts, student_split=0.5, question_split=0.5):
 
     # split to train and test set
-    no_train_rows = int(dataset_ts.shape[0] * student_split)
-    no_train_cols = int(dataset_ts.shape[1] * question_split)
+    no_train_rows = math.ceil(dataset_ts.shape[0] * student_split)
+    no_train_cols = math.ceil(dataset_ts.shape[1] * question_split)
 
     upper_half_ts, lower_half_ts = torch.split(dataset_ts, no_train_rows, dim=0)
     first_quadrant_ts, train_question_ts = torch.split(upper_half_ts, no_train_cols, dim=1)

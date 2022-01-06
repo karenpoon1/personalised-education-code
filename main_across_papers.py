@@ -4,6 +4,7 @@ import torch
 
 from models.SP import SP
 from models.ADP import ADP
+from models.I import I
 
 from utils.parse_data import parse_paper_data
 from utils.preprocess_data import process_raw
@@ -27,9 +28,11 @@ data_start_row = 6
 # Process data
 exam_data_df, meta_data_df = parse_paper_data(raw_data, data_start_row, paper1_columns)
 exam_data_df, _ = process_raw(exam_data_df, meta_data_df, binarise_method='mid', shuffle=True)
+print(exam_data_df)
 
 exam_data_df2, meta_data_df2 = parse_paper_data(raw_data, data_start_row, paper2_columns)
 exam_data_df2, _ = process_raw(exam_data_df2, meta_data_df2, binarise_method='mid', shuffle=True)
+print(exam_data_df2)
 
 combined_df = pd.concat([exam_data_df, exam_data_df2], axis=1)
 combined_ts = torch.clone(torch.tensor(combined_df.values))
@@ -37,8 +40,17 @@ combined_ts = torch.clone(torch.tensor(combined_df.values))
 S, Q = combined_ts.shape[0], combined_ts.shape[1]
 
 # Run model
-my_SP = SP(combined_ts, [0, 15000], [30, Q])
-my_SP.mass_run()
+# my_SP = SP(combined_ts, [0, 15000], [30, Q])
+# my_SP.mass_run()
 
 # my_ADP = ADP(combined_ts, [0, 15000], [30, Q])
 # my_ADP.run(learning_rate=0.00025, iters=10000)
+
+# my_I = I(combined_ts, [0, 15000], [30, Q])
+# my_I.run(learning_rate=0.00025, iters=5000, dimension=1, validation=0.9)
+
+# my_I = I(combined_ts, [0, 15000], [30, Q])
+# my_I.run(learning_rate=0.00025, iters=5000, dimension=2, validation=0.9)
+
+# my_I = I(combined_ts, [0, 15000], [30, Q])
+# my_I.run(learning_rate=0.00025, iters=5000, dimension=3, validation=0.9)

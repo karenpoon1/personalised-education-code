@@ -6,10 +6,13 @@ from sklearn.metrics import confusion_matrix
 
 # from torch.autograd import Variable
 from utils.split_data import split_to_4quadrants
-from models.ability_difficulty_product import probit_correct, train_product_alternate_quadrants
+from models.ADP import ADP
+
+def probit_correct(bs, bq):
+    return 1/(1+torch.exp(-bs-bq))
 
 
-def synthesise_data_from_normal(S, Q, rng):
+def synthesise_ADP(S, Q, rng):
     bs_tensor_fake = torch.normal(mean=0, std=np.sqrt(10), size=(S,), generator=rng)
     bq_tensor_fake = torch.normal(mean=0, std=np.sqrt(10), size=(Q,), generator=rng)
 
@@ -64,38 +67,19 @@ def synthesise_data_from_normal(S, Q, rng):
     return fake_data, bs_tensor_fake, bq_tensor_fake, portion
 
 
-learning_rate = 0.0003
-n_iters = 50000
-seed_number = 1000
+# learning_rate = 0.0003
+# n_iters = 50000
+# seed_number = 1001
 
-rng = torch.Generator()
-rng.manual_seed(seed_number)
+# rng = torch.Generator()
+# rng.manual_seed(seed_number)
 
-S = 45022
-Q = 24
+# S = 45022
+# Q = 24
 
-fake_data, bs_tensor_fake, bq_tensor_fake, portion_fake = synthesise_data_from_normal(S, Q, rng)
-first_quadrant, train_question_output_ts, train_student_output_ts, test_output_ts = split_to_4quadrants(fake_data, student_split=0.5, question_split=0.5)
+# fake_data, bs_tensor_fake, bq_tensor_fake, portion_fake = synthesise_ADP(S, Q, rng)
+# first_quadrant, train_question_output_ts, train_student_output_ts, test_output_ts = split_to_4quadrants(fake_data, student_split=0.5, question_split=0.5)
 
-bs_tensor, bq_tensor, product_params_matrix, performance, conf_matrix = train_product_alternate_quadrants(train_question_output_ts, train_student_output_ts, test_output_ts, learning_rate, n_iters, rng)
-
-portion = product_params_matrix.detach()
-portion = portion[:50, :]
-portion_diff = portion - portion_fake
-sns.heatmap(portion_diff, linewidth=0.5)
-plt.title('Error')
-plt.xlabel('Questions')
-plt.ylabel('Students')
-plt.show()
-
-# print(f"bs_fake (student params): {bs_tensor_fake[22511:22511+50]}")
-# print(f"bq_fake (question params): {bq_tensor_fake[12:]}")
-
-# print((bs_tensor - bs_tensor_fake[int(S*0.5):])**2)
-# print((bq_tensor - bq_tensor_fake[int(Q*0.5):])**2)
-
-# # mse between params
-# bs_mse = torch.sum((bs_tensor - bs_tensor_fake[int(S*0.5):])**2)
-# bq_mse =  torch.sum((bq_tensor - bq_tensor_fake[int(Q*0.5):])**2)
-# print(bs_mse)
-# print(bq_mse)
+# testset_row_range, testset_col_range = [int(S/2), S], [int(Q/2), Q]
+# my_ADP = ADP(fake_data, testset_row_range, testset_col_range)
+# my_ADP.run(learning_rate=0.0002, iters=10000)

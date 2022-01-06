@@ -14,11 +14,12 @@ class SP:
         self.testset_col_range = testset_col_range
 
 
-    def run(self, seed_number=1000):
+    def run(self, seed_number=1000, validation=0.9):
         rng = torch.Generator()
         rng.manual_seed(seed_number)
 
         train_vectorised_ts, test_vectorised_ts = split_and_vectorise(self.data_ts, self.testset_row_range, self.testset_col_range)
+        # train_vectorised_ts, _ = torch.split(train_vectorised_ts, int(torch.numel(train_vectorised_ts[0])*validation), dim=1)
 
         ones_train = torch.sum(train_vectorised_ts[0])
         total_train = torch.numel(train_vectorised_ts[0])

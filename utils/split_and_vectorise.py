@@ -15,14 +15,16 @@ def vectorise_data(data_ts, student_id_range, question_id_range, shuffle=False):
     S, Q = data_ts.shape[0], data_ts.shape[1]
     reshaped_data = data_ts.reshape(-1).type(torch.float) # unstack data
 
+    # Renumbering students - [0,0,0,0,0,1,1,1,1,1,2,2,2,2,2,etc]
     student_id = torch.arange(student_id_range[0], student_id_range[1])
     student_id = student_id.repeat(Q, 1).T.reshape(-1)
 
+    # Renumbering questions - [0,1,2,3,4,5,0,1,2,3,4,5,0,1,2,3,4,5,etc] (questions may have been shuffled previously)
     question_id = torch.arange(question_id_range[0], question_id_range[1])
     question_id = question_id.repeat(S)
 
     vectorised_ts = torch.stack((reshaped_data, student_id, question_id), dim=0)
-    vectorised_ts = vectorised_ts.T[~torch.any(vectorised_ts.isnan(),dim=0)].type(torch.int).T
+    vectorised_ts = vectorised_ts.T[~torch.any(vectorised_ts.isnan(),dim=0)].type(torch.int).T # Remove columns with nan (empty or from testset)
 
     if shuffle:
         col_idxs = list(range(vectorised_ts.shape[1]))

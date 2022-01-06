@@ -1,34 +1,43 @@
 import pandas as pd
 
 from utils.parse_data import parse_paper_data
-from run_model import run_model
+from utils.preprocess_data import process_raw
+from run_model import Models
+from models.ADP import ADP
+from models.SP import SP
 
 paper1_columns = ['Name', 'q1', 'q2', 'q3',
                       'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10', 'q11', 'q12', 'q13', 'q14',
                       'q15', 'q16', 'q17', 'q18', 'q19', 'q20', 'q21', 'q22', 'q23', 'q24']
-paper2_columns = ['Name.1', 'q1.1', 'q2.1', 'q3.1',
-                    'q4.1', 'q5.1', 'q6.1', 'q7.1', 'q8.1', 'q9.1', 'q10.1', 'q11.1',
-                    'q12.1', 'q13.1', 'q14.1', 'q15.1', 'q16.1', 'q17.1', 'q18.1', 'q19.1',
-                    'q20.1', 'q21.1', 'q22.1', 'q23.1']
-paper3_columns = ['Name.2', 'q1.2', 'q2.2', 'q3.2', 'q4.2', 'q5.2', 'q6.2',
-                    'q7.2', 'q8.2', 'q9.2', 'q10.2', 'q11.2', 'q12.2', 'q13.2', 'q14.2',
-                    'q15.2', 'q16.2', 'q17.2', 'q18.2', 'q19.2', 'q20.2', 'q21.2', 'q22.2',
-                    'q23.2']
 
 # old paper
-csv_path = "Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv"
-data_start_row = 23
+paper_csv = "Fwd__Pinpoint_ML_Dataset/9to1_2017_GCSE_1H.csv"
+paper_start = 23
 
-# new paper
-# csv_path = "Fwd__Pinpoint_ML_Dataset\9to1_2017_GCSE_1H_and_2H_and_3H Linked Pinpoint Data_Cleaned.csv"
-# data_start_row = 6
+raw_data = pd.read_csv(paper_csv, low_memory=False)
+exam_data_df, meta_data_df = parse_paper_data(raw_data, paper_start, paper1_columns)
 
-model = ['single_param', 'student_ability', 'question_difficulty', 'ability_difficulty_product', 'ADP_all_at_once', 'ADP_meta_vectorised', 'ADP_meta', 'ADP_interactive_vectorised']
+# # new paper
+# paper_csv = "Fwd__Pinpoint_ML_Dataset\9to1_2017_GCSE_1H_and_2H_and_3H Linked Pinpoint Data_Cleaned.csv"
+# paper_start = 6
 
-raw_data = pd.read_csv(csv_path, low_memory=False)
-exam_data_df, meta_data_df = parse_paper_data(raw_data[paper1_columns], data_start_row)
-# run_model(exam_data_df, meta_data_df, model[3], binarise_method='mid', shuffle=True)
-# run_model(exam_data_df, meta_data_df, model[5], binarise_method='mid', shuffle=False)
-# run_model(exam_data_df, meta_data_df, model[6], binarise_method='mid', shuffle=True)
-run_model(exam_data_df, meta_data_df, model[7], binarise_method='mid', shuffle=False)
+# raw_data = pd.read_csv(paper_csv, low_memory=False)
+# exam_data_df, meta_data_df = parse_paper_data(raw_data, paper_start, paper1_columns)
 
+old_data_models = Models(exam_data_df, meta_data_df)
+# old_data_models.ADP_quadrant(iters=15000)
+old_data_models.ADP_vectorised(learning_rate=0.0002, iters=5930)
+# old_data_models.meta(iters=1530)
+# old_data_models.interactive(learning_rate=0.0002 ,iters=6000)
+
+# # new_data_models = Models(new_exam_data_df, new_meta_data_df)
+# # new_data_models.ADP_vectorised(iters=20000)
+# # new_data_models.ADP_vectorised(iters=4550)
+# # new_data_models.meta(iters=1520)
+# # new_data_models.interactive(iters=2)
+
+# _, new_exam_data_ts = process_raw(new_exam_data_df, new_meta_data_df, binarise_method='mid', shuffle=True)
+
+# S, Q = new_exam_data_ts.shape[0], new_exam_data_ts.shape[1] # Data block size
+# my_ADP = ADP(new_exam_data_ts, [int(S/2), S], [int(Q/2), Q])
+# my_ADP.run(learning_rate=0.00025, iters=100)

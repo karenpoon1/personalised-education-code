@@ -7,7 +7,7 @@ from sklearn.metrics import confusion_matrix
 
 from utils.split_and_vectorise import split_and_vectorise
 
-class ADP:
+class I_without_bias:
     def __init__(self, data_ts, testset_row_range, testset_col_range, binarise_method='mid', shuffle=True, seed_number=1000) -> None:
         self.data_ts = data_ts
         
@@ -22,19 +22,21 @@ class ADP:
         self.rng = rng
 
     @staticmethod
-    def probit_correct(bs, bq):
-        return 1/(1+torch.exp(-bs-bq))
+    def probit_correct(bs, bq, i):
+        return 1/(1+torch.exp(-bs-bq-i))
 
-    def run(self, learning_rate, iters, validation=0.9):
+    def run(self, learning_rate, iters, dimension=1, validation=0.9):
         train_vectorised_ts, test_vectorised_ts = split_and_vectorise(self.data_ts, self.testset_row_range, self.testset_col_range, shuffle=True)
         train_vectorised_ts, validation_vectorised_ts = torch.split(train_vectorised_ts, int(torch.numel(train_vectorised_ts[0])*validation), dim=1)
 
         S, Q = self.data_ts.shape[0], self.data_ts.shape[1] # Data block size
-        trained_bs, trained_bq, nll_train_arr, nll_validation_arr, acc_arr = self.train(train_vectorised_ts, validation_vectorised_ts, test_vectorised_ts, S, Q, learning_rate, iters)
-        accuracy, conf_matrix = self.predict(trained_bs, trained_bq, test_vectorised_ts, vis=True)
+        trained_bs, trained_bq, trained_xs, trained_xq, nll_train_arr, nll_validation_arr, acc_arr = self.train(train_vectorised_ts, validation_vectorised_ts, test_vectorised_ts, S, Q, learning_rate, iters, dimension)
+        accuracy, conf_matrix = self.predict(trained_bs, trained_bq, trained_xs, trained_xq, test_vectorised_ts, vis=True)
 
         self.trained_bs = trained_bs
         self.trained_bq = trained_bq
+        self.trained_xs = trained_xs
+        self.trained_xq = trained_xq
         self.nll_train_arr = nll_train_arr
         self.nll_validation_arr = nll_validation_arr
         self.acc_arr = acc_arr
@@ -42,62 +44,81 @@ class ADP:
         self.conf_matrix = conf_matrix
 
         self.plot_result(nll_train_arr/train_vectorised_ts.shape[1], nll_validation_arr/validation_vectorised_ts.shape[1], acc_arr, iters)
-        print(f"ADP vectorised (rate={learning_rate}, iters={iters}, binarise={self.binarise_method}, shuffle={self.shuffle}) -> accuracy: {accuracy}, confusion matrix: \n{conf_matrix}")
+        print(f"Interactive (rate={learning_rate}, iters={iters}) -> accuracy: {accuracy}, confusion matrix: \n{conf_matrix}")
 
 
-    def train(self, train_ts, validation_ts, test_ts, S, Q, learning_rate, iters):
+    def train(self, train_ts, validation_ts, test_ts, S, Q, learning_rate, iters, dimension):
         step_size = 25
 
         nll_train_arr, nll_validation_arr = np.zeros(iters), np.zeros(iters)
         acc_arr = np.zeros(math.ceil(iters/step_size))
 
         # Randomly initialise random student, question parameters
-        bs = torch.randn(S, requires_grad=True, generator=self.rng)
-        bq = torch.randn(Q, requires_grad=True, generator=self.rng)
+        bs = torch.zeros(S)
+        bq = torch.zeros(Q)
+        xs = torch.randn((dimension,S), requires_grad=True, generator=self.rng)
+        xq = torch.randn((dimension,Q), requires_grad=True, generator=self.rng)
 
         for epoch in range(iters):
             # Train set params
             bs_train = torch.index_select(bs, 0, train_ts[1])
             bq_train = torch.index_select(bq, 0, train_ts[2])
+            xs_train = torch.index_select(xs, 1, train_ts[1])
+            xq_train = torch.index_select(xq, 1, train_ts[2])
             # Train nll
-            probit_1 = 1/(1+torch.exp(-bs_train-bq_train))
+            interactive_train = xs_train*xq_train
+            interactive_train = torch.sum(interactive_train, 0)
+            probit_1 = 1/(1+torch.exp(-bs_train-bq_train-interactive_train))
             nll = -torch.sum(train_ts[0]*torch.log(probit_1) + (1-train_ts[0])*torch.log(1-probit_1))
             nll.backward()
-
+            
             # validation set params
-            bs_copy, bq_copy = torch.clone(bs), torch.clone(bq)
+            bs_copy, bq_copy, xs_copy, xq_copy = torch.clone(bs), torch.clone(bq), torch.clone(xs), torch.clone(xq)
             bs_validation = torch.index_select(bs_copy, 0, validation_ts[1])
             bq_validation = torch.index_select(bq_copy, 0, validation_ts[2])
+            xs_validation = torch.index_select(xs_copy, 1, validation_ts[1])
+            xq_validation = torch.index_select(xq_copy, 1, validation_ts[2])
             # validation nll
-            probit_1_validation = 1/(1+torch.exp(-bs_validation-bq_validation))
+            nll_validation = 0
+            interactive_validation = xs_validation*xq_validation
+            interactive_validation = torch.sum(interactive_validation, 0)
+            probit_1_validation = 1/(1+torch.exp(-bs_validation-bq_validation-interactive_validation))
             nll_validation = -torch.sum(validation_ts[0]*torch.log(probit_1_validation) + (1-validation_ts[0])*torch.log(1-probit_1_validation))
-
+            
             # Gradient descent
             with torch.no_grad():
-                bs -= learning_rate * bs.grad
-                bq -= learning_rate * bq.grad
+                xs -= learning_rate * xs.grad
+                xq -= learning_rate * xq.grad
 
             # Zero gradients after updating
-            bs.grad.zero_()
-            bq.grad.zero_()
+            xs.grad.zero_()
+            xq.grad.zero_()
 
             if epoch % step_size == 0:
-                acc, _ = self.predict(bs, bq, test_ts)
+                acc, _ = self.predict(bs, bq, xs, xq, test_ts)
                 acc_arr[epoch // step_size] = acc
                 print(epoch, nll, nll_validation, acc)
 
             nll_train_arr[epoch], nll_validation_arr[epoch] = nll, nll_validation
 
         print(epoch, nll, nll_validation, acc)
-        return bs, bq, nll_train_arr, nll_validation_arr, acc_arr
+        return bs, bq, xs, xq, nll_train_arr, nll_validation_arr, acc_arr
 
 
-    def predict(self, bs, bq, test_ts, vis=False):
+    def predict(self, trained_bs, trained_bq, trained_xs, trained_xq, test_ts, vis=False):
         # Test set params after training
-        bs_test = torch.index_select(bs, 0, test_ts[1])
-        bq_test = torch.index_select(bq, 0, test_ts[2])
+        bs_test = torch.index_select(trained_bs, 0, test_ts[1])
+        bq_test = torch.index_select(trained_bq, 0, test_ts[2])
+        xs_test = torch.index_select(trained_xs, 1, test_ts[1])
+        xq_test = torch.index_select(trained_xq, 1, test_ts[2])
+        print(xs_test)
 
-        predicted_probit = ADP.probit_correct(bs_test, bq_test)
+        interactive_test = xs_test*xq_test
+        print(interactive_test)
+        interactive_test = torch.sum(interactive_test, 0)
+
+        predicted_probit = I_without_bias.probit_correct(bs_test, bq_test, interactive_test)
+        print(predicted_probit)
         predictions = torch.bernoulli(predicted_probit, generator=self.rng)
 
         performance = torch.sum(torch.eq(test_ts[0], predictions)) / torch.numel(test_ts[0])
